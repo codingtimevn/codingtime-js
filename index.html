@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <title></title>
-    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.slim.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script type="text/javascript" prefix="ct-" src="src/js/core.js"></script>
     <script type="text/javascript" src="src/js/carousel.js"></script>
     <script type="text/javascript" src="src/js/fullpage.js"></script>
@@ -11,73 +11,70 @@
     <script type="text/javascript" src="src/js/paralax.js"></script>
     <script type="text/javascript" src="src/js/slideshow.js"></script>
     <script type="text/javascript" src="src/js/video.js"></script>
+    <script type="text/javascript" src="src/js/navigation.js"></script>
+    <script type="text/javascript" src="src/js/panigation.js"></script>
+    <script type="text/javascript" src="src/js/pursued.js"></script>
+
     <script type="text/javascript" ct-setting='{"space":15}' ct-test="asdfasd" src="src/js/fixed.js"></script>
 
     <script type="text/javascript" src="src/js/slideshow.js"></script>
     <style>
-        ct-fixed {
-            display: block;
+        [pursued-shadow] {
+            background-color: red;
         }
-        ct-fixed > * {
-            display: block;
-            background: red;
-            position: relative;
+        ul[items] {
+            width: 600px;
+            margin: 0 auto;
+            padding:0;
         }
-        ct-paralax {
-            height: 2000px;
-            display: block;
-        }
-        ct-fullpage {
-            display: block;
-            height: 50vh;
-            overflow: auto;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-        }
-        space {
-            display:block;
-            height: 1000px;
-        }
-        test {
-            display: block;
-            position: absolute;
-            top: 100px;
-            left: 50%;
-            width: 100px;
-            height: 100px;
-            background: blue;
+        ul[items] li{
+            list-style: none;
         }
     </style>
 </head>
 <body>
-    <space></space>
-    <ct-fullpage>
-        <space></space>
-        <test></test>
-        <ct-fixed>
-            <ct-slideshow ct='{"active":"aaaa"}' ct-test="test" id="fadfasd">
-                <items>
-                    <ct-video></ct-video>
-                    <ct-layerslide></ct-layerslide>
-                </items>
-                <ct-carousel ct-on="change: parent.active(currentIndex)">
-                    <items></items>
 
-                    <next>Prev</next>
-                    <prev>Next</prev>
-                </ct-carousel>
-                <next>Prev</next>
-                <prev>Next</prev>
-            </ct-slideshow>
-        </ct-fixed>
-        <ct-paralax>
-            
-        </ct-paralax>
-    </ct-fullpage>
-    <space></space>
-    <space></space>
-    <space></space>
+    <div ct="{
+            panigation: { loop: true},
+            carousel: {},
+            pursued: {},
+            navigation: {}
+         }">
+        <div pursued-shadow></div>
+        <ul items>
+            <li pursued pursued-active>1</li>
+            <li pursued>2</li>
+            <li pursued>3</li>
+            <li pursued>4</li>
+            <li pursued>5</li>
+            <li pursued>6</li>
+            <li pursued>7</li>
+            <li pursued>8</li>
+        </ul>
+
+        <div prev>Prev</div>
+        <div next>Next</div>
+    </div>
+
 </body>
 </html>
+<script>
+
+
+    var element = document.querySelector('body');
+    setTimeout(function () {
+        element.setAttribute('data-text', 'whatever');
+    }, 5000)
+
+    var observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+            if (mutation.type == "attributes") {
+                console.log("attributes changed")
+            }
+        });
+    });
+
+    observer.observe(element, {
+        attributes: true //configure it to listen to attribute changes
+    });
+</script>

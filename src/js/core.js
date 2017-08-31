@@ -8,15 +8,29 @@
                     eval('str = ' + str);
                 } catch (e) { }
                 return str;
+            },
+            configFromParams = function (params) {
+                var obj = {};
+                $.each(params, function (key, val) {
+                    var keys = key.split('.'), child = obj;
+                    while (keys.length > 1) {
+                        key = keys.shift();
+                        child = (child[key] = child[key] || {});
+                    }
+                    child[keys.shift()] = val;
+                });
+                return obj;
             }
             ;
 
-        $.each([Array, String, Function, Function.prototype], function () {
+        $.each([Array, Function, Function.prototype], function () {
             $.extend(this, {
                 was: function (obj) { return obj instanceof this; }
             });
         });
         Object.was = function (obj) { return obj instanceof this && !Array.was(obj) }
+        String.was = function (obj) { return typeof obj === 'string' }
+
         String.prototype.toProp = function () {
             return this.replace(/-([a-z])/g, function (match, key) {
                 return key.toUpperCase()
@@ -29,9 +43,10 @@
         /********************************** Core *****************************************/
         var CT = function (setting) {
             $.extend(CT.setting, setting);
-        };
+            prefix = setting.prefix || prefix;
+        }, prefix = 'ct-';
         $.extend(CT, {
-            components: {},
+            Coms: {},
             setting: {
                 prefix: 'ct-'
             },
@@ -43,29 +58,47 @@
                 });
                 return attrs;
             },
-            nodeParams: function (node, prefix) {
-                prefix = prefix || '';
-                var params = JSON.parse(node.getAttribute(prefix.replace(/-$/i, '')) || '{}');
-                prefix = new RegExp('^' + prefix, 'i');
+            nodeParams: function (node) {
+                var string = node.getAttribute(prefix.replace(/-$/i, ''));
+                var params = {};
+                if (string) {
+                    try {
+                        eval('params = ' + string);
+                    } catch (e) {
+                        var reg = /\w+[\w\d]*/i;
+                        $.each(string.split(/ +|,/g).map(function (com) { return com.toProp() }).filter(function (com) {
+                            if (reg.test(com)) return com;
+                        }), function () {
+                            params[this] = {};
+                        });
+                    };
+                }
+                
+                
+                    
+                var reg = new RegExp('^' + prefix, 'i');
                 $.each(CT.nodeAttrs(node), function (key, val) {
-                    if (prefix.test(key)) {
-                        params[key.replace(prefix, '').toProp()] = val;
+                    if (reg.test(key)) {
+                        params[key.replace(reg, '').toProp()] = val;
                     }
                 });
                 return params;
+            },
+            nodeSetting: function (node) {
+                var params = this.nodeParams(node);
+                return configFromParams(params);
             },
             ready: function (fn) {
                 doc.addEventListener('DOMContentLoaded', fn);
                 return this;
             },
-            install: function () { $.each(CT.components, function () { this.install(); }) },
             get: function (id, name) {
                 if (id === undefined) return;
                 if (name != undefined) {
-                    return (this.components[id] || { installed: {} }).installed[name];
+                    return (this.Coms[id] || { installed: {} }).installed[name];
                 } else {
                     var com;
-                    $.each(this.components, function () {
+                    $.each(this.Coms, function () {
                         if ((com = this.installed[id]) !== undefined) return false;
                     });
                     return com;
@@ -94,6 +127,7 @@
 
         CT.Enum = function (props) {
             var count = 0;
+            if (arguments.length > 1) props = arr.slice.call(arguments);
             return new function Enum() {
                 CT.Const.call(this, {
                     extend: function (props) {
@@ -115,6 +149,7 @@
             }
         }
 
+
         CT.Class = function (func) {
             func = func || function () { };
             var extendClass = [];
@@ -129,11 +164,23 @@
                         })));
                         return this
                     },
-                    const: function (props) {
-                        CT.Const.call(this, props);
+                    const: function (prop, val) {
+                        if (String.was(prop)) {
+                            var props = {};
+                            props[prop] = val;
+                            return this.const(props);
+                        }
+                        CT.Const.call(this, prop);
+                        return this;
                     }
                 });
+                if (arguments.callee.caller === Class) return;
                 this.extend.apply(this, extendClass.map(function (cl) { return cl.apply(This, args) }));
+                var public = {};
+                $.each(this, function (name, prop) {
+                        public[name] = Function.was(prop) ? function () { return prop.apply(This, arguments); } : prop;
+                });
+                this.super = new Class().const(public);
                 return func.apply(this, arguments);
             }
             CT.Const.call(Class, {
@@ -144,7 +191,17 @@
                         $.extend(cl, this);
                     });
                     return this
+                },
+                const: function (prop, val) {
+                    if (String.was(prop)) {
+                        var props = {};
+                        props[prop] = val;
+                        return this.const(props);
+                    }
+                    CT.Const.call(this, prop);
+                    return this;
                 }
+
             });
             return Class;
         }
@@ -152,7 +209,6 @@
 
 
         CT.Event = (function () {
-            var prefix = CT.setting.prefix;
             return new CT.Class(function Event(node) {
                 node = node || doc.createElement('Event');
 
@@ -164,7 +220,9 @@
                     },
                     bind: function (name, func) {
                         $event.bind(prefix + name, func.handler = func.handler || function () {
-                            return func.apply(This, arguments);
+                            var rs = func.apply(This, arguments);
+                            if (rs === false)  arguments[0].stopImmediatePropagation();
+                            return rs;
                         });
                         return this
                     },
@@ -177,13 +235,25 @@
                     unbind: function (name, func) {
                         $event.unbind(prefix + name, (func || {}).handler);
                         return this
+                    },
+                    action: function (actions) {
+                        if (arguments.length > 1) actions = arr.slice.call(arguments);
+                        var This = this;
+                        if (String.was(actions)) return this.const(actions, function () {
+                            return this.fire(actions, arguments);
+                        });
+                        if (Function.was(actions)) return this.action(actions.call(this));
+                        if (Array.was(actions)) return $.each(actions, function (k,val) {
+                            This.action(val);
+                        }), this;
+                        return this;
                     }
                 });
             });
         })();
 
         CT.Node = new CT.Class(function (node) {
-            this.extend({
+            this.const({
                 node: node,
                 parent: function () { },
                 addChild: function (module) { },
@@ -196,37 +266,122 @@
         CT.Component = function (fn, name) {
 
             var
-                prefix = CT.setting.prefix,
-                comSetting = CT.nodeParams(doc.currentScript, prefix),
-                defaults = $.extend({}, comSetting.setting || {}),
+                comSetting = CT.nodeParams(doc.currentScript),
+                defaults = $.extend(true, {}, comSetting.setting || {}),
                 name = comSetting.component || name,
                 tag = prefix + name
                 ;
 
-            var Component = CT.components[name] = new CT.Class(function(node) {
-                if (node.component) return;
-                node.component = this;
-                if (!this instanceof Component) return new Component(node);
-                var setting = $.extend({}, defaults, CT.nodeParams(node, prefix), {
-                    id: node.id,
-                    name: node.name
+            var Component = CT.Coms[name] = new CT.Class(function (node, setting) {
+                if (!this instanceof Component) return new Component(node, setting);
+                arguments[0] = node = node || doc.createElement(prefix + 'nullcomponent');
+
+                if (!node.ctComs) Object.defineProperty(node, 'ctComs', {
+                    enumerable: false,
+                    configurable: false,
+                    writable: false,
+                    value: {}
                 });
-                this.extend({
+                if (node.ctComs[name]) return node.ctComs[name];
+                Object.defineProperty(node.ctComs, name, {
+                    enumerable: false,
+                    configurable: false,
+                    writable: false,
+                    value: this
+                });
+                
+                
+                var
+                    This = this,
+                    registers = {};
+                setting = $.extend(true, {}, defaults, setting || CT.nodeSetting(node));
+
+                this.const({
                     setting: setting,
                     getState: function () { },
                     setState: function () { },
-                    saveState: function () { }
+                    saveState: function () { },
+                    connect: function (com, actions) {
+                        if (com.node === this.node) return;
+                        if (String.was(actions)) { actions = arr.slice.call(arguments, 1) }
+                        $.each(actions, function (i, action) {
+                            var connect;
+                            This.bind(action, function () {
+                                if (!connect) { connect = com }
+                                else if (connect == this) { delete connect; return false }
+                                arr.shift.call(arguments);
+                                return com[action] && com[action].apply(com,arguments);
+                            });
+                            com.bind(action, function () {
+                                if (!connect) { connect = This }
+                                else if (connect == this) { delete connect; return false }
+                                arr.shift.call(arguments);
+                                return This[action] && This[action].apply(This, arguments);
+                            });
+                        });
+                        return this;
+                    },
+                    module: function (obj, selector, init) {
+                        if (Object.was(obj)) {
+                            $.each(obj, function (key, val) {
+                                if (Array.was(val)) {
+                                    This.module(key, val[0], val[1]);
+                                } else if (Object.was(val)) {
+                                    This.module(key, val.selector, val.init);
+                                } else {
+                                    This.module(key, val);
+                                }
+                            });
+                        } else {
+                            registers[obj] = {
+                                selector: selector,
+                                init: init
+                            };
+                        }
+                        
+                        return this;
+                    },
+                    observer: function (func) {
+                        this.bind('domchange', func);
+                        func();
+                        return this;
+                    }
                 });
 
-                Component.installed.push(Component.installed[this.id] = this);
+                //Component.installed.push(this);
+                //this.id && (Component.installed['#'+this.id] = this);
+                //this.name && (Component.installed['[' + this.name+']'] = this);
+                
+                var $node = $(node), initModule = function (e) {
+                    setTimeout(function () {
+                        $.each(registers, function (name, params) {
+                            var module;
+                            if (Function.was(params.selector)) {
+                                module = params.selector.call(This);
+                            } else {
+                                if (This.node.ctComs[name]) return This.node.ctComs;
+                                var node = $node.find(params.selector).get(0);
+                                module = node && node.ctComs && node.ctComs[name];
+                            }
+                            if (This.module[name] = module) {
+                                Function.was(params.init) && params.init.call(module);
+                                delete registers[name];
+                            }
+                        });
+                    });
+                };
+                node.addEventListener('DOMNodeRemoved', function (e) {
+                    This.fire('domchange', [e]);
+                });
+                node.addEventListener('DOMNodeInserted', function (e) {
+                    This.fire('domchange', [e]);
+                    if (e && !e.target.ctComs) return;
+                    initModule();
+                });
+                initModule();
+
                 fn.call(this, setting);
             }).extend(CT.Node, new CT.Event, {
-                install: function () {
-                    $.each(doc.getElementsByTagName(tag), function () {
-                        new Component(this);
-                    });
-                    return arguments.callee
-                },
                 installed: [],
                 setting: function (setting) { $.extend(defaults, setting, comSetting.setting) }
             });
@@ -242,14 +397,16 @@
         }
         /********************************** Initialize Components *****************************************/
         $(function () {
-            var reg = new RegExp('^' + CT.setting.prefix);
+            var reg = new RegExp('^' + prefix), init = function () {
+                var node = this;
+                $.each(CT.nodeSetting(this), function (name) {
+                    CT.Coms[name] && new CT.Coms[name](node, this);
+                });
+            };
             doc.addEventListener('DOMNodeInserted', function (e) {
-                var name = e.target.tagName.toLowerCase();
-                if (!reg.test(name)) return;
-                var Com = CT.components[name.replace(reg, '').toProp()];
-                Com && new Com(e.target);
+                init.call(e.target);
             });
-            CT.install();
+            $('[' + prefix.replace(/-$/i, '') + ']').each(init);
         });
         
         return CT;

@@ -3,34 +3,94 @@
 
 
     var Fixed = new this.Component(function (setting) {
-        if (!Fixed.fire('add', [this, setting])) return false;
+        if (!Fixed.create(this, setting)) return false;
+        this.action('layout', 'reset', 'remove', 'enable', 'repair');
+        this.const({
+            fixed: function () { return val.fixed }
+        });
         this.extend({
-            enable: function (enable) {
-
-            },
-            remove: function () { },
-            fixed: function () { return val.fixed },
-            reset: function () { },
-            layout: function () {
-                this.fire('layout');
-                //var pos = this.node.getBoundingClientRect()
-                //bounds = priv.panel.getBoundingClientRect()
-                ;
-
-                //console.log(pos);
-                //priv.$node.css({position: 'fixed'})
-
-
-                //console.log($.now() - time)
-
-
-
-                //console.log(scrollTop);
-            },
             rect: { top: 0, left: 0, right: 0, bottom: 0 },
-            bounds: { top: 0, left: 0, right: 0, bottom: 0 },
-            repair: function () {
-                
+            bounds: { top: 0, left: 0, right: 0, bottom: 0 }
+        });
+
+        var This = this, body = doc.body;
+
+        // private methods
+        var priv = {
+            panel: this.node.parentNode,
+            child: this.node.children[0],
+            $panel: $(this.node.parentNode),
+            $scroll: $(this.node.parentNode),
+            $node: $(this.node),
+            $child: $(this.node.children[0]),
+
+            layout: function () {
+                var scrollTop = priv.panel.scrollTop;
+                This.bounds.top = This.rect.top - priv.panel.bounds.top;
+                var lastStatus = val.fixed;
+
+                if (priv.panel.outRange) {
+                    if (val.fixed !== -1) { val.fixed = -1; }
+                } else if (scrollTop < this.bounds.top) {
+                    if (val.fixed !== 0) { val.fixed = 0; }
+                } else {
+                    if (priv.scrollEvent &&
+                        priv.scrollEvent.target !== priv.panel &&
+                        priv.panel.bounds.top > 0) {
+                        val.fixed = 2;
+                        delete priv.scrollEvent;
+                    } else {
+                        val.fixed = 1;
+                    }
+                }
+                if (lastStatus !== val.fixed) {
+                    This.fire('status', [val.fixed]);
+                }
+            },
+            scrollHandler: function (e) {
+                priv.layout.call(This);
+            },
+            repairBoundsHandler: function (e) {
+                priv.scrollEvent = e;
+                for (var i = 0, j = priv.$scroll.length; i < j; i++) {
+                    var scroll = priv.$scroll.get(i);
+                    if (e.timeStamp === scroll.timeStamp || e.target === scroll) continue;
+                    scroll.timeStamp = e.timeStamp;
+                    scroll.bounds = scroll.getBoundingClientRect();
+                    if (scroll.bounds.bottom < 0 || scroll.bounds.top > win.innerHeight) {
+                        scroll.outRange = true;
+                        break;
+                    } else {
+                        scroll.outRange = false;
+                    }
+                }
+            },
+            getScoll: function () {
+                return this.$node.parents().filter(function () {
+                    return this.scrollHeight > this.offsetHeight || this === body;
+                });
+            },
+            unfixed: function () {
+            },
+            setfixed: function () {
+            }
+        }
+
+        priv.$node.css({ display: 'block' });
+
+        // vals
+        var val = {
+            fixed: 0,
+            css: {
+                node: priv.$node.attr('style') || '',
+                child: priv.$child.attr('style') || ''
+            }
+        }
+
+        this
+            .bind('layout', function () { priv.layout.call(This) })
+            .bind('repair', function () {
+
                 priv.$node.attr('style', val.css.node);
                 priv.$child.attr('style', val.css.child);
                 /*
@@ -91,89 +151,6 @@
 
 
                 //this.position = priv.$node.position();
-            }
-        });
-
-        var This = this, body = doc.body;
-
-        // private methods
-        var priv = {
-            panel: this.node.parentNode,
-            child: this.node.children[0],
-            $panel: $(this.node.parentNode),
-            $scroll: $(this.node.parentNode),
-            $node: $(this.node),
-            $child: $(this.node.children[0]),
-
-
-            scrollHandler: function (e) {
-                This.layout();
-            },
-            repairBoundsHandler: function (e) {
-                priv.scrollEvent = e;
-                for (var i = 0, j = priv.$scroll.length; i < j; i++) {
-                    var scroll = priv.$scroll.get(i);
-                    if (e.timeStamp === scroll.timeStamp || e.target === scroll) continue;
-                    scroll.timeStamp = e.timeStamp;
-                    scroll.bounds = scroll.getBoundingClientRect();
-                    if (scroll.bounds.bottom < 0 || scroll.bounds.top > win.innerHeight) {
-                        scroll.outRange = true;
-                        break;
-                    } else {
-                        scroll.outRange = false;
-                    }
-                }
-            },
-            getScoll: function () {
-                return this.$node.parents().filter(function () {
-                    return this.scrollHeight > this.offsetHeight || this === body;
-                });
-            },
-            unfixed: function () {
-            },
-            setfixed: function () {
-            }
-        }
-
-        priv.$node.css({ display: 'block' });
-
-        // vals
-        var val = {
-            fixed: 0,
-            css: {
-                node: priv.$node.attr('style') || '',
-                child: priv.$child.attr('style') || ''
-            }
-        }
-
-        this
-            .bind('layout', function (e) {
-                var scrollTop = 0, outRange = false;
-                for (var i = 0, j = priv.$scroll.length; i < j; i++) {
-                    var scroll = priv.$scroll.get(i);
-                    if (scroll.outRange) { outRange = true; break }
-                    scrollTop += scroll.scrollTop;
-                }
-                This.bounds.top = This.rect.top - (priv.panel.bounds.top > 0 ? priv.panel.bounds.top:0);
-                var lastStatus = val.fixed;
-
-                if (outRange) {
-                    if (val.fixed !== -1) { val.fixed = -1; }
-                } else if (scrollTop < this.bounds.top ) {
-                    if (val.fixed !== 0) { val.fixed = 0; }
-                } else {
-                    if (priv.scrollEvent &&
-                        priv.scrollEvent.target !== priv.panel &&
-                        priv.panel.bounds.top > 0) {
-                        val.fixed = 2;
-                        delete priv.scrollEvent;
-                    } else {
-                        val.fixed = 1;
-                    }
-                }
-                if (lastStatus !== val.fixed) {
-                    this.fire('status', [val.fixed]);
-                }
             }).bind('status', function (e, status) {
                 console.log(status)
                 switch (status) {
@@ -236,24 +213,13 @@
         });
         This.repair();
         $(win).scroll(priv.repairBoundsHandler).scroll(priv.scrollHandler).scroll();
-        Fixed.add(this);
-    }, 'fixed').extend({
-        add: function (fixed) {
-            fixeds.push(fixed);
-        },
-        layout: function () { $.each(fixeds, function () { this.layout() }); },
-        repair: function () { $.each(fixeds, function () { this.layout() }); }
-    });
+    }, 'fixed');
     Fixed.setting({
         space: 10,
         push: false,
         avoid: false
     });
+    Fixed.action(['create']);
+}).call(CodingTime);
 
-    Fixed.bind('add', function (e, fixed, setting) {
-        if (fixed.node.children.length !== 1) {
-            console.warn(fixed.node, 'Fixed must have 1 child Element (==1)');
-            return false;
-        }
-    });
-}).call(window.CodingTime);
+
